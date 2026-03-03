@@ -1,0 +1,11 @@
+[package]
+name = "knn"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+anyhow = "1.0.102"
+colored = "3.1.1"
+polars = "0.53.0"
+rand = "0.10.0"
+rayon = "1.11.0"
