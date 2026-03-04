@@ -4,6 +4,7 @@ pub mod knn;
 
 #[cfg(test)]
 mod tests {
+    use std::{env, path::PathBuf};
     use polars::{
         io::SerReader,
         prelude::{AnyValue, CsvReadOptions, NamedFrom},
@@ -14,12 +15,21 @@ mod tests {
 
     use crate::knn::Knn;
 
+    /// Returns the assets directory from the `ASSETS_DIR` environment variable.
+    /// Usage: `ASSETS_DIR=/path/to/assets cargo test -- --nocapture`
+    fn assets_dir() -> PathBuf {
+        PathBuf::from(
+            env::var("ASSETS_DIR")
+                .expect("Set the ASSETS_DIR environment variable to your assets directory path\nExample: ASSETS_DIR=/path/to/assets cargo test find_best_k -- --nocapture\n"),
+        )
+    }
+
     #[test]
     pub fn test_knn_with_train_df() -> anyhow::Result<()> {
         let train = CsvReadOptions::default()
             .with_has_header(true)
             .try_into_reader_with_file_path(Some(
-                "/home/jojo/Documents/rust/knn/assets/train.csv".into(),
+                assets_dir().join("train.csv"),
             ))?
             .finish()?
             .drop_nulls::<String>(None)?;
@@ -89,7 +99,7 @@ mod tests {
         let base_train = CsvReadOptions::default()
             .with_has_header(true)
             .try_into_reader_with_file_path(Some(
-                "/home/jojo/Documents/rust/knn/assets/train.csv".into(),
+                assets_dir().join("train.csv"),
             ))?
             .finish()?
             .drop_nulls::<String>(None)?;
@@ -167,7 +177,7 @@ mod tests {
         let base_train = CsvReadOptions::default()
             .with_has_header(true)
             .try_into_reader_with_file_path(Some(
-                "/home/jojo/Documents/rust/knn/assets/train.csv".into(),
+                assets_dir().join("train.csv"),
             ))?
             .finish()?
             .drop_nulls::<String>(None)?;

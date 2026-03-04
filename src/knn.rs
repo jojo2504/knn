@@ -1,7 +1,7 @@
 use std::{cmp::Ordering, collections::{BinaryHeap, HashMap}};
 
 use anyhow::Ok;
-use polars::{frame::DataFrame, prelude::{AnyValue, Column, NamedFrom}, series::Series};
+use polars::{frame::DataFrame, prelude::{AnyValue, Column, DataType, NamedFrom}, series::Series};
 
 use crate::distance::{DistanceMetric, distance};
 
@@ -85,6 +85,76 @@ impl Knn {
             .clone();
 
         Ok(prediction)
+    }
+
+    /// Compute Fisher's Discriminant Ratio (FDR) for every numeric feature column
+    /// against a label column.
+    ///
+    /// FDR = Σ_c [ n_c * (μ_c − μ_global)² ] / Σ_c [ n_c * σ_c² ]
+    ///
+    /// A higher FDR means the feature separates the classes better.
+    /// Also prints per-class means so you can spot patterns like "C1 > 500 → class 2".
+    pub fn feature_importance(df: &DataFrame, label_col: &str) -> anyhow::Result<Vec<(String, f64)>> {
+        let y = df.column(label_col)?;
+
+        // Collect unique classes and their row indices
+        let n = df.height();
+        let mut class_rows: HashMap<String, Vec<usize>> = HashMap::new();
+        for i in 0..n {
+            let cls = y.get(i)?.to_string();
+            class_rows.entry(cls).or_default().push(i);
+        }
+
+        let feature_cols: Vec<String> = df
+            .schema()
+            .iter()
+            .filter(|(name, dtype)| **dtype == DataType::Float64 && name.as_str() != label_col)
+            .map(|(name, _)| name.to_string())
+            .collect();
+
+        let mut results: Vec<(String, f64)> = Vec::new();
+
+        println!("\n{:>8} │ {:>8} │  per-class means", "feature", "FDR");
+        println!("{}", "─".repeat(60));
+
+        for col_name in &feature_cols {
+            let col: Vec<f64> = df.column(col_name)?.f64()?.into_iter()
+                .map(|v| v.unwrap_or(0.0)).collect();
+
+            let global_mean = col.iter().sum::<f64>() / n as f64;
+
+            let mut between = 0.0f64;
+            let mut within  = 0.0f64;
+
+            let mut class_means: Vec<(String, f64)> = Vec::new();
+
+            for (cls, rows) in &class_rows {
+                let nc = rows.len() as f64;
+                let mean_c = rows.iter().map(|&i| col[i]).sum::<f64>() / nc;
+                let var_c  = rows.iter().map(|&i| (col[i] - mean_c).powi(2)).sum::<f64>() / nc;
+                between += nc * (mean_c - global_mean).powi(2);
+                within  += nc * var_c;
+                class_means.push((cls.clone(), mean_c));
+            }
+
+            let fdr = if within.abs() < 1e-12 { f64::INFINITY } else { between / within };
+            class_means.sort_by(|a, b| a.0.cmp(&b.0));
+            let means_str = class_means.iter()
+                .map(|(c, m)| format!("cls{}: {:.1}", c, m))
+                .collect::<Vec<_>>()
+                .join("  ");
+
+            println!("{:>8} │ {:>8.4} │  {}", col_name, fdr, means_str);
+            results.push((col_name.clone(), fdr));
+        }
+
+        results.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
+        println!("\n── Ranked by FDR (higher = more discriminative) ──");
+        for (i, (feat, fdr)) in results.iter().enumerate() {
+            println!("  {}. {:>6}  FDR = {:.4}", i + 1, feat, fdr);
+        }
+
+        Ok(results)
     }
 
     // Scale all features within the given dataframe. 

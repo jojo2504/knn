@@ -1,8 +1,8 @@
 use polars::prelude::AnyValue;
 
 pub fn euclidian_distance(x1: &Vec<AnyValue>, x2: &Vec<AnyValue>) -> f32 {
-    let _x1 = &x1[0..7];
-    let _x2 = &x2[0..7];
+    let _x1 = &x1[..];
+    let _x2 = &x2[..];
 
     _x1.iter()
         .zip(_x2.iter())
@@ -15,8 +15,8 @@ pub fn euclidian_distance(x1: &Vec<AnyValue>, x2: &Vec<AnyValue>) -> f32 {
 }
 
 pub fn manhattan_distance(x1: &Vec<AnyValue>, x2: &Vec<AnyValue>) -> f32 {
-    let _x1 = &x1[0..7];
-    let _x2 = &x2[0..7];
+    let _x1 = &x1[..];
+    let _x2 = &x2[..];
 
     _x1.iter()
         .zip(_x2.iter())
@@ -27,8 +27,8 @@ pub fn manhattan_distance(x1: &Vec<AnyValue>, x2: &Vec<AnyValue>) -> f32 {
 }
 
 pub fn minkowski_distance(x1: &Vec<AnyValue>, x2: &Vec<AnyValue>, p: i32) -> f32 {
-    let _x1 = &x1[0..7];
-    let _x2 = &x2[0..7];
+    let _x1 = &x1[..];
+    let _x2 = &x2[..];
 
     _x1.iter()
         .zip(_x2.iter())

@@ -1,4 +1,4 @@
-use std::{fs::File, io::{BufWriter, Write}};
+use std::{env, fs::File, io::{BufWriter, Write}, path::Path};
 
 use anyhow::Ok;
 use knn::knn::Knn;
@@ -6,21 +6,24 @@ use polars::{io::SerReader, prelude::CsvReadOptions};
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 
 fn main() -> anyhow::Result<()> {
+    let args: Vec<String> = env::args().collect();
+    let assets_directory = Path::new(&args[1]);
+    
     let train = CsvReadOptions::default()
-        .with_has_header(true)
-        .try_into_reader_with_file_path(Some(
-            "/home/jojo/Documents/rust/knn/assets/train.csv".into(),
-        ))?
-        .finish()?
-        .drop_nulls::<String>(None)?;
+    .with_has_header(true)
+    .try_into_reader_with_file_path(Some(
+        assets_directory.join("train.csv"),
+    ))?
+    .finish()?
+    .drop_nulls::<String>(None)?;
 
     let mut input = CsvReadOptions::default()
-        .with_has_header(true)
-        .try_into_reader_with_file_path(Some(
-            "/home/jojo/Documents/rust/knn/assets/test.csv".into(),
-        ))?
-        .finish()?
-        .drop_nulls::<String>(None)?;
+    .with_has_header(true)
+    .try_into_reader_with_file_path(Some(
+        assets_directory.join("test.csv"),
+    ))?
+    .finish()?
+    .drop_nulls::<String>(None)?;
 
     let knn = Knn::new(3, train);
 
@@ -45,7 +48,7 @@ fn main() -> anyhow::Result<()> {
     })
     .collect();
 
-    let file = File::create("/home/jojo/Documents/rust/knn/src/sample_submission.csv")?;
+    let file = File::create(assets_directory.join("submission.csv"))?;
     let mut writer = BufWriter::new(file);
 
     // Write header
