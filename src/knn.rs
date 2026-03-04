@@ -46,15 +46,36 @@ impl PartialOrd for Neighbor {
 #[derive(Clone)]
 pub struct Knn {
     pub k: u32,
-    pub train_dataframe: DataFrame
+    pub train_dataframe: DataFrame,
+    pub feature_importances: Option<Vec<f64>>
 }
 
 impl Knn {
-    pub fn new(k: u32, train_dataframe: DataFrame) -> Self {
-        Self {
+    pub fn new(k: u32, train_dataframe: DataFrame, compute_importances: bool) -> Self {
+        let mut knn = Self {
             k,            
-            train_dataframe 
+            train_dataframe,
+            feature_importances: None
+        };
+
+        if compute_importances {
+            let result: Vec<(String, f64)> = knn.feature_importance().unwrap();
+            let mut features_weight: Vec<f64> = result
+                .iter()
+                .map(|(_, b)| {
+                    *b
+                })
+                .collect();
+            
+            let total: f64 = features_weight.iter().sum();
+            features_weight
+                .iter_mut()
+                .for_each(|x| *x /= total);
+            
+            knn.feature_importances = Some(features_weight);
         }
+
+        knn
     }
 
     pub fn predict(&self, input: &Vec<AnyValue>, x_train: &DataFrame, y_train: &Column) -> anyhow::Result<String> {
@@ -64,7 +85,7 @@ impl Knn {
         for row_train in 0..x_train.height() {
             let train_row = x_train.get_row(row_train)?.0;
             let class = y_train.get(row_train).unwrap().to_string();
-            let distance = distance(&input, &train_row, DistanceMetric::Manhattan);
+            let distance = distance(&input, &train_row, DistanceMetric::Manhattan, &self.feature_importances);
             maxheap.push(Neighbor::new(distance, class));
 
             if maxheap.len() > self.k as usize {
@@ -94,31 +115,28 @@ impl Knn {
     ///
     /// A higher FDR means the feature separates the classes better.
     /// Also prints per-class means so you can spot patterns like "C1 > 500 → class 2".
-    pub fn feature_importance(df: &DataFrame, label_col: &str) -> anyhow::Result<Vec<(String, f64)>> {
-        let y = df.column(label_col)?;
+    pub fn feature_importance(&self) -> anyhow::Result<Vec<(String, f64)>> {
+        let y = self.train_dataframe.column("Label")?;
 
         // Collect unique classes and their row indices
-        let n = df.height();
+        let n = self.train_dataframe.height();
         let mut class_rows: HashMap<String, Vec<usize>> = HashMap::new();
         for i in 0..n {
             let cls = y.get(i)?.to_string();
             class_rows.entry(cls).or_default().push(i);
         }
 
-        let feature_cols: Vec<String> = df
+        let feature_cols: Vec<String> = self.train_dataframe
             .schema()
             .iter()
-            .filter(|(name, dtype)| **dtype == DataType::Float64 && name.as_str() != label_col)
+            .filter(|(name, dtype)| **dtype == DataType::Float64 && name.as_str() != "Label")
             .map(|(name, _)| name.to_string())
             .collect();
 
         let mut results: Vec<(String, f64)> = Vec::new();
 
-        println!("\n{:>8} │ {:>8} │  per-class means", "feature", "FDR");
-        println!("{}", "─".repeat(60));
-
         for col_name in &feature_cols {
-            let col: Vec<f64> = df.column(col_name)?.f64()?.into_iter()
+            let col: Vec<f64> = self.train_dataframe.column(col_name)?.f64()?.into_iter()
                 .map(|v| v.unwrap_or(0.0)).collect();
 
             let global_mean = col.iter().sum::<f64>() / n as f64;
@@ -139,19 +157,7 @@ impl Knn {
 
             let fdr = if within.abs() < 1e-12 { f64::INFINITY } else { between / within };
             class_means.sort_by(|a, b| a.0.cmp(&b.0));
-            let means_str = class_means.iter()
-                .map(|(c, m)| format!("cls{}: {:.1}", c, m))
-                .collect::<Vec<_>>()
-                .join("  ");
-
-            println!("{:>8} │ {:>8.4} │  {}", col_name, fdr, means_str);
             results.push((col_name.clone(), fdr));
-        }
-
-        results.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
-        println!("\n── Ranked by FDR (higher = more discriminative) ──");
-        for (i, (feat, fdr)) in results.iter().enumerate() {
-            println!("  {}. {:>6}  FDR = {:.4}", i + 1, feat, fdr);
         }
 
         Ok(results)

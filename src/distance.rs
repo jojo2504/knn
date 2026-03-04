@@ -26,6 +26,16 @@ pub fn manhattan_distance(x1: &Vec<AnyValue>, x2: &Vec<AnyValue>) -> f32 {
         .sum::<f32>()
 }
 
+pub fn weighted_manhattan_distance(x1: &Vec<AnyValue>, x2: &Vec<AnyValue>, weights: &Vec<f64>) -> f32 {
+    x1.iter()
+        .zip(x2.iter())
+        .zip(weights.iter())
+        .map(|((a, b), w)| {
+            w * (a.extract::<f64>().unwrap() - b.extract::<f64>().unwrap()).abs()
+        })
+        .sum::<f64>() as f32
+}
+
 pub fn minkowski_distance(x1: &Vec<AnyValue>, x2: &Vec<AnyValue>, p: i32) -> f32 {
     let _x1 = &x1[..];
     let _x2 = &x2[..];
@@ -43,13 +53,15 @@ pub fn minkowski_distance(x1: &Vec<AnyValue>, x2: &Vec<AnyValue>, p: i32) -> f32
 pub enum DistanceMetric {
     Euclidean,
     Manhattan,
+    WeightedManhattan,
     Minkowski(i32),
 }
 
-pub fn distance(x1: &Vec<AnyValue>, x2: &Vec<AnyValue>, metric: DistanceMetric) -> f32 {
+pub fn distance(x1: &Vec<AnyValue>, x2: &Vec<AnyValue>, metric: DistanceMetric, weights: &Option<Vec<f64>>) -> f32 {
     match metric {
         DistanceMetric::Euclidean    => euclidian_distance(x1, x2),
         DistanceMetric::Manhattan    => manhattan_distance(x1, x2),
+        DistanceMetric::WeightedManhattan    => weighted_manhattan_distance(x1, x2, weights.as_ref().expect("Need to pass some weights")),
         DistanceMetric::Minkowski(p) => minkowski_distance(x1, x2, p),
     }
 }
