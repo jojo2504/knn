@@ -332,7 +332,7 @@ mod tests {
     }
 
     /// 10-fold cross-validation — prints each prediction green/red, then fold summary.
-    /// Usage: ASSETS_DIR=/path/to/assets cargo test cross_validate_10_fold -- --nocapture
+    /// Usage: ASSETS_DIR=/path/to/assets cargo test cross_validate_10_fold --release -- --nocapture
     #[test]
     pub fn cross_validate_10_fold() -> anyhow::Result<()> {
         let base_train = CsvReadOptions::default()
