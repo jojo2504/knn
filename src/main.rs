@@ -330,4 +330,103 @@ mod tests {
         println!("best k={} with mean accuracy={:.2}%", best_k, best_accuracy);
         Ok(())
     }
+
+    /// 10-fold cross-validation — prints each prediction green/red, then fold summary.
+    /// Usage: ASSETS_DIR=/path/to/assets cargo test cross_validate_10_fold -- --nocapture
+    #[test]
+    pub fn cross_validate_10_fold() -> anyhow::Result<()> {
+        let base_train = CsvReadOptions::default()
+            .with_has_header(true)
+            .try_into_reader_with_file_path(Some(
+                assets_dir().join("train.csv"),
+            ))?
+            .finish()?
+            .drop_nulls::<String>(None)?;
+
+        let mut base_knn = Knn::new(3, base_train, true);
+
+        // Shuffle once
+        let mut rng = rng();
+        let mut indices: Vec<u32> = (0..base_knn.train_dataframe.height() as u32).collect();
+        indices.shuffle(&mut rng);
+        let indices_series = Series::new("idx".into(), indices);
+        base_knn.train_dataframe = base_knn.train_dataframe.take(indices_series.u32()?)?;
+
+        let x = base_knn
+            .train_dataframe
+            .select(base_knn.train_dataframe.get_column_names()[1..8].to_vec())?;
+        let y = base_knn
+            .train_dataframe
+            .column(base_knn.train_dataframe.get_column_names()[8])?
+            .clone();
+
+        let n          = base_knn.train_dataframe.height();
+        let num_folds  = 10;
+        let fold_size  = n / num_folds;
+
+        let mut total_correct = 0;
+        let mut total_count   = 0;
+        let mut fold_accuracies: Vec<f32> = Vec::new();
+
+        for fold in 0..num_folds {
+            let test_start = fold * fold_size;
+            let test_end   = test_start + fold_size;
+
+            let x_test = x.slice(test_start as i64, fold_size);
+            let y_test = y.slice(test_start as i64, fold_size);
+
+            let x_train_a = x.slice(0, test_start);
+            let x_train_b = x.slice(test_end as i64, n - test_end);
+            let mut y_train_a = y.slice(0, test_start);
+            let y_train_b = y.slice(test_end as i64, n - test_end);
+
+            let mut x_train = x_train_a.vstack(&x_train_b)?;
+            let y_train = y_train_a.extend(&y_train_b)?;
+
+            let stats = Knn::transform(&mut x_train, None)?;
+            let mut x_test = x_test;
+            Knn::transform(&mut x_test, stats)?;
+
+            let mut knn = base_knn.clone();
+            knn.k = 3;
+
+            let mut fold_correct = 0;
+            for row_test in 0..x_test.height() {
+                let inputs: Vec<AnyValue> = x_test.get_row(row_test)?.0;
+                let prediction = knn.predict(&inputs, &x_train, &y_train)?;
+                let real = y_test.get(row_test)?.to_string();
+
+                if prediction == real {
+                    fold_correct += 1;
+                    println!(
+                        "{}",
+                        &format!("[fold {}] prediction : {}, Real: {}", fold + 1, prediction, real).green()
+                    );
+                } else {
+                    println!(
+                        "{}",
+                        &format!("[fold {}] prediction : {}, Real: {}", fold + 1, prediction, real).red()
+                    );
+                }
+            }
+
+            let fold_accuracy = fold_correct as f32 / fold_size as f32 * 100.0;
+            println!(
+                "Fold {}/{} — Accuracy: {}/{} = {:.2}%\n",
+                fold + 1, num_folds, fold_correct, fold_size, fold_accuracy
+            );
+
+            total_correct += fold_correct;
+            total_count   += fold_size;
+            fold_accuracies.push(fold_accuracy);
+        }
+
+        let mean_accuracy = fold_accuracies.iter().sum::<f32>() / num_folds as f32;
+        println!(
+            "10-fold CV — Total: {}/{} = {:.2}%",
+            total_correct, total_count, mean_accuracy
+        );
+
+        Ok(())
+    }
 }
